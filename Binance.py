@@ -1,6 +1,9 @@
 from binance.client import Client
 import config
 import pandas as pd
+import dateparser
+import pytz
+# from datetime import timezone
 
 class BinanceClient:
   __instance = None
@@ -20,10 +23,43 @@ class BinanceClient:
     else:
       raise Exception('try to initialize multiple instance of a singleton')
 
-  def get_kline_pd(self, symbol, limit=1000, tz='Asia/Shanghai'):
+  def get_klines_pd(self, symbol, interval=Client.KLINE_INTERVAL_1MINUTE,
+                    limit=1000, tz='Asia/Shanghai'):
     candles = self.client.get_klines( symbol=symbol,
-                                      interval=Client.KLINE_INTERVAL_1MINUTE,
+                                      interval=interval,
                                       limit=limit)
+    df = pd.DataFrame(candles, dtype=float, columns = ( 'OpenTime',
+                                                        'Open',
+                                                        'High',
+                                                        'Low',
+                                                        'Close',
+                                                        'Volume',
+                                                        'CloseTime',
+                                                        'QuoteAssetVolume',
+                                                        'NumberOfTrades',
+                                                        'TakerBuyBaseAssetVolume',
+                                                        'TakerBuyQuoteAssetVolume',
+                                                        'Ignore' ))
+    df['OpenTime'] = pd.to_datetime(df['OpenTime'], unit='ms', utc=True).dt.tz_convert(tz)
+    df['CloseTime'] = pd.to_datetime(df['CloseTime'], unit='ms', utc=True).dt.tz_convert(tz)
+    return df
+
+  def _to_utc_datetime_str(self, local_datetime_str, tz):
+    #utc_dt = pd.to_datetime(local_datetime_str).tz_localize(tz).tz_convert('UTC')
+    utc_dt = dateparser.parse(local_datetime_str).astimezone(pytz.utc)
+    return utc_dt.strftime('%Y-%m-%d %H:%M:%S')
+
+  def get_historical_klines_pd(self, symbol, start_str, end_str=None,
+                               interval=Client.KLINE_INTERVAL_1MINUTE,
+                               limit=1000, tz='Asia/Shanghai'):
+    start_t = self._to_utc_datetime_str(start_str, tz)
+    end_t = None if end_str is None else self._to_utc_datetime_str(end_str, tz)
+
+    candles = self.client.get_historical_klines(symbol=symbol,
+                                                interval=interval,
+                                                start_str=start_t,
+                                                end_str=end_t,
+                                                limit=limit)
     df = pd.DataFrame(candles, dtype=float, columns = ( 'OpenTime',
                                                         'Open',
                                                         'High',
