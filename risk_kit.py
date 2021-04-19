@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import scipy.stats
+import matplotlib.pyplot as plt
 from scipy.stats import norm
 from scipy.optimize import minimize
 
@@ -46,16 +47,16 @@ def annualized_vol(r, period_per_year):
     """
     return r.std() * (period_per_year**0.5)
 
-def sharp_ratio(r, riskfree_rate, periods_per_year):
-    """
-    Computes the annualized sharp ratio of a set of returns
-    """
-    # convert the annual riskfree rate to per period
-    rf_per_period = (1 + riskfree_rate) ** (1/periods_per_year) - 1
-    excess_ret = r - rf_per_period
-    ann_ex_ret = annualized_ret(excess_ret, periods_per_year)
-    ann_vol = annualized_vol(r, periods_per_year)
-    return ann_ex_ret/ann_vol
+# def sharp_ratio(r, riskfree_rate, periods_per_year):
+#     """
+#     Computes the annualized sharp ratio of a set of returns
+#     """
+#     # convert the annual riskfree rate to per period
+#     rf_per_period = (1 + riskfree_rate) ** (1/periods_per_year) - 1
+#     excess_ret = r - rf_per_period
+#     ann_ex_ret = annualized_ret(excess_ret, periods_per_year)
+#     ann_vol = annualized_vol(r, periods_per_year)
+#     return ann_ex_ret/ann_vol
 
 def is_normal(r, level=0.01):
     """
@@ -71,7 +72,7 @@ def is_normal(r, level=0.01):
     else:
         raise TypeError('Expected r to be Series or DataFrame')
 
-def drawdown(return_series: pd.Series, deposit_fund = 1.):
+def drawdown(return_series: pd.Series, deposit_fund = 1., return_dict=False):
     """
     Takes a times series of asset returns
     Computes and returns a DataFrame that contains:
@@ -82,11 +83,18 @@ def drawdown(return_series: pd.Series, deposit_fund = 1.):
     wealth_index = deposit_fund * (1 + return_series).cumprod()
     previous_peaks = wealth_index.cummax()
     drawdowns = (wealth_index - previous_peaks) / previous_peaks
-    return pd.DataFrame({
-        'Wealth': wealth_index,
-        'Peaks': previous_peaks,
-        'Drawdown': drawdowns
-    })
+    if return_dict:
+        return {
+            'Wealth': wealth_index,
+            'Peaks': previous_peaks,
+            'Drawdown': drawdowns
+        }
+    else:
+        return pd.DataFrame({
+            'Wealth': wealth_index,
+            'Peaks': previous_peaks,
+            'Drawdown': drawdowns
+        })
 
 def skewness(r):
     """
@@ -183,7 +191,7 @@ def plot_ef2(n_points, er, cov, style='.-'):
     """
     Plots the 2-asset efficient frontier
     """
-    if er.shape[0] != 2 or cov.shape[0] !=2:
+    if er.shape[0] != 2 or cov.shape[0] != 2:
         raise ValueError('plot_ef2 can only plot 2-asset frontier')
     weights = [np.array([w, 1-w]) for w in np.linspace(0, 1, n_points)]
     rets = [portfolio_ret(w, er) for w in weights]
@@ -234,13 +242,13 @@ def gmv(cov):
     given the covariance matrix
     """
     n = cov.shape[0]
-    return msr(0, np.repeat(1, n), cov)
+    return msr(np.repeat(1, n), cov)
 
 def plot_ef(n_points, er, cov,
             show_cml=True, riskfree_rate=0, cml_color='green',
             show_ew=False, ew_color='goldenrod',
             show_gmv=False, gmv_color='red',
-            style='.-'):
+            style='.-', figsize=(8, 6)):
     """
     Plots the N-asset efficient frontier
     """
@@ -251,39 +259,47 @@ def plot_ef(n_points, er, cov,
         'Returns': rets,
         'Volatility': vols
     })
-    ax = ef.plot.line(x='Volatility', y='Returns', style=style)
+    ax = ef.plot.line(x='Volatility', y='Returns', style=style, figsize=figsize)
     ax.set_xlim(left=0)
+    ax.set_xlabel('Volatility %')
+    ax.set_ylabel('Returns %')
+    ax.xaxis.set_major_formatter(_ticklabel_formatter)
+    ax.yaxis.set_major_formatter(_ticklabel_formatter)
     if (show_ew):
         n = er.shape[0]
         w_ew = np.repeat(1/n, n)
         r_ew = portfolio_ret(w_ew, er)
         v_ew = portfolio_vol(w_ew, cov)
-        ax.plot([v_ew], [r_ew], color=ew_color,
+        ax.plot([v_ew], [r_ew], color=ew_color, label='EW (Equal Weights)',
                 marker='o', markersize=8)
     if (show_gmv):
         n = er.shape[0]
         w_gmv = gmv(cov)
         r_gmv = portfolio_ret(w_gmv, er)
         v_gmv = portfolio_vol(w_gmv, cov)
-        ax.plot([v_gmv], [r_gmv], color=gmv_color,
+        ax.plot([v_gmv], [r_gmv], color=gmv_color, label='GMV (Global Minimum Variance)',
                 marker='o', markersize=8)
     if (show_cml):
-        w_msr = msr(riskfree_rate, er, cov)
+        w_msr = msr(er, cov, riskfree_rate)
         r_msr = portfolio_ret(w_msr, er)
         v_msr = portfolio_vol(w_msr, cov)
         # CML points
         cml_x = [0, v_msr]
         cml_y = [riskfree_rate, r_msr]
-        ax.plot(cml_x, cml_y, color=cml_color,
+        ax.plot(cml_x, cml_y, color=cml_color, label='CML (Capital Market Line)',
                 marker='o', markersize=8, linestyle='--')
+    plt.legend()
     return ax
+
+def _ticklabel_formatter(v, pos):
+    return round(v * 100, 2)
 
 def neg_sharpe_ratio(weights, riskfree_rate, er, cov):
     r = portfolio_ret(weights, er)
     vol = portfolio_vol(weights, cov)
     return -(r-riskfree_rate)/vol
 
-def msr(riskfree_rate, er, cov):
+def msr(er, cov, riskfree_rate=0):
     """
     Riskfree rate + ER + COV -> W
     """

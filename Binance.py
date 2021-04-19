@@ -24,7 +24,7 @@ class BinanceClient:
       raise Exception('try to initialize multiple instance of a singleton')
 
   def get_klines_pd(self, symbol, interval=Client.KLINE_INTERVAL_1MINUTE,
-                    limit=1000, tz='Asia/Shanghai'):
+                    limit=1000, tz='Asia/Shanghai', closetime_as_index=True):
     candles = self.client.get_klines( symbol=symbol,
                                       interval=interval,
                                       limit=limit)
@@ -42,6 +42,8 @@ class BinanceClient:
                                                         'Ignore' ))
     df['OpenTime'] = pd.to_datetime(df['OpenTime'], unit='ms', utc=True).dt.tz_convert(tz)
     df['CloseTime'] = pd.to_datetime(df['CloseTime'], unit='ms', utc=True).dt.tz_convert(tz)
+    if closetime_as_index:
+        df = df.set_index(['CloseTime'])
     return df
 
   def _to_utc_datetime_str(self, local_datetime_str, tz):
@@ -51,7 +53,7 @@ class BinanceClient:
 
   def get_historical_klines_pd(self, symbol, start_str, end_str=None,
                                interval=Client.KLINE_INTERVAL_1MINUTE,
-                               limit=1000, tz='Asia/Shanghai'):
+                               limit=1000, tz='Asia/Shanghai', closetime_as_index=True):
     start_t = self._to_utc_datetime_str(start_str, tz)
     end_t = None if end_str is None else self._to_utc_datetime_str(end_str, tz)
 
@@ -74,6 +76,8 @@ class BinanceClient:
                                                         'Ignore' ))
     df['OpenTime'] = pd.to_datetime(df['OpenTime'], unit='ms', utc=True).dt.tz_convert(tz)
     df['CloseTime'] = pd.to_datetime(df['CloseTime'], unit='ms', utc=True).dt.tz_convert(tz)
+    if closetime_as_index:
+        df = df.set_index(['CloseTime'])
     return df
 
   def call_method(f, **p):
