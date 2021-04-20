@@ -247,11 +247,15 @@ def gmv(cov):
 def plot_ef(n_points, er, cov,
             show_cml=True, riskfree_rate=0, cml_color='green',
             show_ew=False, ew_color='goldenrod',
-            show_gmv=False, gmv_color='red',
+            show_gmv=False, gmv_color='tomato',
+            show_msr=False, msr_color='magenta',
             style='.-', figsize=(8, 6)):
     """
     Plots the N-asset efficient frontier
     """
+
+    # -------------------------------------------------------------------
+    # --- weights, returns, volatility, msr
     weights = optimal_weights(n_points, er, cov)
     rets = [portfolio_ret(w, er) for w in weights]
     vols = [portfolio_vol(w, cov) for w in weights]
@@ -259,12 +263,21 @@ def plot_ef(n_points, er, cov,
         'Returns': rets,
         'Volatility': vols
     })
+    w_msr = msr(er, cov, riskfree_rate)
+    r_msr = portfolio_ret(w_msr, er)
+    v_msr = portfolio_vol(w_msr, cov)
+    
+    # -------------------------------------------------------------------
+    # --- efficient frontier line
     ax = ef.plot.line(x='Volatility', y='Returns', style=style, figsize=figsize)
     ax.set_xlim(left=0)
     ax.set_xlabel('Volatility %')
     ax.set_ylabel('Returns %')
     ax.xaxis.set_major_formatter(_ticklabel_formatter)
     ax.yaxis.set_major_formatter(_ticklabel_formatter)
+
+    # -------------------------------------------------------------------
+    # --- efficient frontier point
     if (show_ew):
         n = er.shape[0]
         w_ew = np.repeat(1/n, n)
@@ -272,6 +285,9 @@ def plot_ef(n_points, er, cov,
         v_ew = portfolio_vol(w_ew, cov)
         ax.plot([v_ew], [r_ew], color=ew_color, label='EW (Equal Weights)',
                 marker='o', markersize=8)
+
+    # -------------------------------------------------------------------
+    # --- global minimum variance point
     if (show_gmv):
         n = er.shape[0]
         w_gmv = gmv(cov)
@@ -279,16 +295,24 @@ def plot_ef(n_points, er, cov,
         v_gmv = portfolio_vol(w_gmv, cov)
         ax.plot([v_gmv], [r_gmv], color=gmv_color, label='GMV (Global Minimum Variance)',
                 marker='o', markersize=8)
+
+    # -------------------------------------------------------------------
+    # --- capital market line
     if (show_cml):
-        w_msr = msr(er, cov, riskfree_rate)
-        r_msr = portfolio_ret(w_msr, er)
-        v_msr = portfolio_vol(w_msr, cov)
-        # CML points
         cml_x = [0, v_msr]
         cml_y = [riskfree_rate, r_msr]
         ax.plot(cml_x, cml_y, color=cml_color, label='CML (Capital Market Line)',
                 marker='o', markersize=8, linestyle='--')
+        
+    # -------------------------------------------------------------------
+    # --- max sharpe ratio point
+    if (show_msr):
+        ax.plot([v_msr], [r_msr], label='MSR (Maximum Sharpe Ratio)',
+                marker='o', markersize=8, color=msr_color)
+    # -------------------------------------------------------------------
+    # --- final stuff
     plt.legend()
+
     return ax
 
 def _ticklabel_formatter(v, pos):
