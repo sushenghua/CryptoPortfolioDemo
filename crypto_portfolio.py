@@ -131,27 +131,55 @@ def _value_to_2color(values):
 def _ticklabel_formatter(v, pos):
     return round(v * 100, 2)
 
-def portfolio_pie_plot(weights, rows_index, name, figsize=(5, 5)):
-    if len(weights) != len(rows_index) or len(weights) == 0:
-        raise ValueError('weights not compatible with rows_index or empty weights')
-    weights100 = weights * 100
-    weights100 = (weights100 > 1e-4) * weights100
-    df = pd.DataFrame({name: weights100}, index=rows_index)
+def _filter_elements(values, labels):
+    ret_v = []
+    ret_l = []
+    nonzero_count = 0
+    for i in range(len(values)):
+        if (values[i] > 1e-6):
+            ret_v.append(values[i]*100)
+            ret_l.append(labels[i])
+            nonzero_count += 1
+        else:
+            ret_v.append(0)
+            ret_l.append('')
+    return (nonzero_count, ret_v, ret_l)
 
-#     plt.figure(figsize=figsize)
-#     patches, texts, pcts = plt.pie(df[name], labels=df.index,
-#                                    wedgeprops={'linewidth': 1, 'edgecolor': 'white'},
-#                                    #textprops=dict(color='w', size='large', weight='bold'),
-#                                    autopct=lambda v: '{:.1f}%'.format(v) if v > 0 else '')
-#     plt.setp(pcts, color='w', fontweight='bold')
+def _plot_pie(values, labels, name, figsize=(5, 5)):
+    nzc, v, l = _filter_elements(values, labels)
+    linewidth = 2 if nzc > 1 else 0
+    plt.figure(figsize=figsize)
+    patches, texts, pcts = plt.pie(v, labels=l,
+                                   wedgeprops={'linewidth': linewidth, 'edgecolor': 'w'},
+                                   #textprops=dict(color='w', size='large', weight='bold'),
+                                   autopct=lambda v: '{:.1f}%'.format(v) if v > 0 else '')
+    for i, patch in enumerate(patches):
+        texts[i].set_color(patch.get_facecolor())
+    plt.setp(pcts, color='w', size='large', weight='bold')
+    plt.setp(texts, weight='bold')
+    plt.legend(bbox_to_anchor=(1.5, 0.8))
+    plt.title('{} Portfolio'.format(name), fontsize=15)
+    plt.legend(bbox_to_anchor=(1.5, 0.8))
+    #plt.tight_layout()
+    plt.show()
+
+def _df_plot_pie(values, labels, name, figsize=(5, 5)):
+    values100 = values * 100
+    values100 = (weights100 > 1e-4) * values
+    df = pd.DataFrame({name: values100}, index=labels)
     ax = df.plot.pie(y=name, figsize=figsize,
                      wedgeprops={'linewidth': 1, 'edgecolor': 'white'},
                      #explode=(0.01, 0.01, 0.01, 0.01),
                      #textprops=dict(color='w', size='large', weight='bold'),
                      autopct=lambda v: '{:.1f}%'.format(v) if v > 0 else '')
     ax.set_ylabel('')
+    plt.legend(bbox_to_anchor=(1.5, 0.8))
     plt.title('{} Portfolio'.format(name), fontsize=15)
     plt.legend(bbox_to_anchor=(1.5, 0.8))
-    #plt.tight_layout()
     plt.show()
-    
+
+def portfolio_pie_plot(weights, labels, name, figsize=(6, 6)):
+    if len(weights) != len(labels) or len(weights) == 0:
+        raise ValueError('weights not compatible with labels or empty weights')
+    _plot_pie(weights, labels, name, figsize)
+
