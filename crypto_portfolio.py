@@ -2,11 +2,10 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+from matplotlib import ticker
 from Binance import BinanceClient as client
 import risk_kit as rk
-# %load_ext autoreload
-# %autoreload 2
-# %matplotlib inline
+
 
 def historical_tradedata_pd(tradepairs, from_datetime, interval='1h', columns='Close'):
     bc = client.instance()
@@ -18,17 +17,27 @@ def historical_tradedata_pd(tradepairs, from_datetime, interval='1h', columns='C
     tradepairs_pd = pd.concat(tradepairs_data_list, axis=1)
     tradepairs_pd.columns = tradepairs
     return tradepairs_pd
-
+    
 def historical_tradedata_analysis(tradepairs, from_datetime, interval='1h',
-                                  period_info={'name': 'Daily', 'intervals': 24}):
-    # -------------------------------------------------------------------
-    # --- data frame and display params
+                                  period_info={'name': 'Daily', 'intervals': 24},
+                                  plotlist=['corr_map', 'price', 'ret', 'vol',
+                                            'sr', 'peak', 'wealth', 'drawdown',
+                                            'ef', 'msr_struct', 'gmv_struct']):
+    # --- data frame
     tradedata_pd = historical_tradedata_pd(tradepairs, from_datetime, interval)
 
-    # - return series, covariance
+    # - return series, covariance, correlation
     rets = tradedata_pd.pct_change().dropna()
     cov = rets.cov()
     corr = rets.corr()
+
+    # - periodized return, volatility and sharpe ratio
+    periodized_ret = rk.periodized_ret(rets, period_info['intervals'])
+    periodized_vol = rk.periodized_vol(rets, period_info['intervals'])
+    sharpe_ratio = periodized_ret / periodized_vol  # riskfree_rate is 0
+
+    # - drawdown
+    dd = rk.drawdown(rets, return_dict=True)
 
     # - display
     titlesize = 14
@@ -36,9 +45,76 @@ def historical_tradedata_analysis(tradepairs, from_datetime, interval='1h',
     glstyle = '-.'
     glwidth = 0.5
 
-    # -------------------------------------------------------------------
-    # --- coorelation map
-    cellsize = 1.1*len(tradepairs)
+    # - iterate and plot
+    for p in plotlist:
+        if p == 'corr_map':
+            plot_correlation_map(corr=corr, labels=tradepairs, titlesize=titlesize)
+
+        elif p == 'price':
+            plot_price(tradedata_pd, tradepairs, 'USDT', figsize, glstyle, glwidth, titlesize)
+
+        elif p == 'ret':
+            plot_bar(periodized_ret, _value_to_2color(periodized_ret.values),
+                     '{} Return'.format(period_info['name']), '%',
+                     _ticklabel_formatter,
+                     figsize, glstyle, glwidth, titlesize)
+
+        elif p == 'vol':
+            plot_bar(periodized_vol, 'royalblue',
+                     '{} Volatility'.format(period_info['name']), '%',
+                     _ticklabel_formatter,
+                     figsize, glstyle, glwidth, titlesize)
+
+        elif p == 'sr':
+             plot_bar(sharpe_ratio, _value_to_2color(sharpe_ratio.values),
+                     '{} Sharpe Ratio (Riskfree Rate 0)'.format(period_info['name']),
+                     r'$\frac{Return}{Volatility}$',
+                     ticker.NullFormatter(),
+                     figsize, glstyle, glwidth, titlesize)
+
+        elif p == 'peaks':
+            dd['Peaks'].plot(ylabel='USDT', xlabel='', figsize=figsize)
+            plt.title('Peak (Invest 1 USDT)', fontsize=titlesize)
+            plt.grid(linestyle=glstyle, linewidth=glwidth)
+
+        elif p == 'wealth':
+            dd['Wealth'].plot(ylabel='USDT', xlabel='', figsize=figsize)
+            plt.title('Wealth (Invest 1 USDT)', fontsize=titlesize)
+            plt.grid(linestyle=glstyle, linewidth=glwidth)
+
+        elif p == 'drawdown':
+            ax = dd['Drawdown'].plot(ylabel='%', xlabel='', figsize=figsize)
+            ax.yaxis.set_major_formatter(_ticklabel_formatter)
+            plt.title('Drawdown', fontsize=titlesize)
+            plt.grid(linestyle=glstyle, linewidth=glwidth)
+
+        elif p == 'ef':
+            ax = rk.plot_ef(30, periodized_ret, cov,
+                            show_cml=True, show_ew=True, show_gmv=True,
+                            show_msr=True, figsize=figsize)
+            ax.set_title('Portfolio Efficient Frontier', fontsize=titlesize)
+            plt.grid(linestyle=glstyle, linewidth=glwidth)
+            plt.show()
+
+        elif p == 'msr_struct':
+            portfolio_pie_plot(rk.msr(periodized_ret, cov), tradepairs, name='MSR')
+
+        elif p == 'gmv_struct':
+            portfolio_pie_plot(rk.gmv(cov), tradepairs, name='GMV') 
+
+
+# -------------------------------------------------------------------
+# --- helper methods
+def _value_to_2color(values):
+    return ['forestgreen' if v > 0 else 'crimson' for v in values]
+
+def _ticklabel_formatter(v, pos):
+    return round(v * 100, 2)
+
+# -------------------------------------------------------------------
+# --- correlation map
+def plot_correlation_map(corr, labels, titlesize):
+    cellsize = 1.1*len(labels)
     heatmap_figsize = (cellsize+1, cellsize)
     plt.subplots(figsize=heatmap_figsize)
     ax = sns.heatmap(corr, cmap='Blues', annot=True)
@@ -47,90 +123,32 @@ def historical_tradedata_analysis(tradepairs, from_datetime, interval='1h',
     plt.title('Correlations', fontsize=titlesize)
     plt.show()
 
-    # -------------------------------------------------------------------
-    # --- plot price line
-    for cln in tradepairs:
+# -------------------------------------------------------------------
+# --- plot price line
+def plot_price(df, pairs, ylabel, figsize, glstyle, glwidth, titlesize):
+    for cln in pairs:
         plt.figure(figsize=figsize)
-        tradedata_pd[cln].plot(xlabel='', ylabel='USDT')
+        ax = df[cln].plot(xlabel='')
+        ax.set_ylabel(ylabel, fontsize=12)
         plt.title(cln, fontsize=titlesize)
         plt.grid(linestyle=glstyle, linewidth=glwidth)
         plt.show()
 
-    # -------------------------------------------------------------------
-    # --- return, volatility and sharpe ratio
-    # - periodized return, volatility and sharpe ratio
-    periodized_ret = rk.periodized_ret(rets, period_info['intervals'])
-    periodized_vol = rk.periodized_vol(rets, period_info['intervals'])
-    sharpe_ratio = periodized_ret / periodized_vol  # riskfree_rate is 0
-
-    # - Return bar
+# -------------------------------------------------------------------
+# --- plot bar
+def plot_bar(df, color, title, ylabel, ytickformatter, figsize, glstyle, glwidth, titlesize):
     plt.figure(figsize=figsize)
-    ax = periodized_ret.plot.bar(ylabel='%', color=_value_to_2color(periodized_ret.values))
-    ax.yaxis.set_major_formatter(_ticklabel_formatter)
-    plt.title('{} Return'.format(period_info['name']) ,fontsize=titlesize)
+    ax = df.plot.bar(color=color)
+    ax.set_ylabel(ylabel, fontsize=14)
+    ax.yaxis.set_major_formatter(ytickformatter)
+    plt.title(title ,fontsize=titlesize)
     plt.axhline(y=0, color='darkblue', linestyle='--', linewidth=1)
     plt.grid(axis='y', linestyle=glstyle, linewidth=glwidth)
     plt.show()
 
-    # - Volatility bar
-    plt.figure(figsize=figsize)
-    ax = periodized_vol.plot.bar(ylabel='%', color='royalblue')
-    ax.yaxis.set_major_formatter(_ticklabel_formatter)
-    plt.title('{} Volatility'.format(period_info['name']), fontsize=titlesize)
-    plt.grid(axis='y', linestyle=glstyle, linewidth=glwidth)
-    plt.show()
 
-    # - Sharpe Ratio bar
-    plt.figure(figsize=figsize)
-    ax = sharpe_ratio.plot.bar(color=_value_to_2color(sharpe_ratio.values))
-    ax.set_ylabel(r'$\frac{Return}{Volatility}$', fontsize=15)
-    #ax.yaxis.set_major_formatter(_ticklabel_formatter)
-    plt.title('{} Sharpe Ratio (Riskfree Rate 0)'.format(period_info['name']), 
-              fontsize=titlesize)
-    plt.axhline(y=0, color='darkblue', linestyle='--', linewidth=1)
-    plt.grid(axis='y', linestyle=glstyle, linewidth=glwidth)
-    plt.show()
-
-    # -------------------------------------------------------------------
-    # --- plot drawdown
-    dd = rk.drawdown(rets, return_dict=True)
-
-    # - peaks
-    dd['Peaks'].plot(ylabel='USDT', xlabel='', figsize=figsize)
-    plt.title('Peak (Invest 1 USDT)', fontsize=titlesize)
-    plt.grid(linestyle=glstyle, linewidth=glwidth)
-
-    # - wealth
-    dd['Wealth'].plot(ylabel='USDT', xlabel='', figsize=figsize)
-    plt.title('Wealth (Invest 1 USDT)', fontsize=titlesize)
-    plt.grid(linestyle=glstyle, linewidth=glwidth)
-
-    # - drawdown
-    ax = dd['Drawdown'].plot(ylabel='%', xlabel='', figsize=figsize)
-    ax.yaxis.set_major_formatter(_ticklabel_formatter)
-    plt.title('Drawdown', fontsize=titlesize)
-    plt.grid(linestyle=glstyle, linewidth=glwidth)
-
-    # -------------------------------------------------------------------
-    # --- portfolio efficient frontier
-    ax = rk.plot_ef(30, periodized_ret, cov,
-                    show_cml=True, show_ew=True, show_gmv=True,
-                    show_msr=True, figsize=figsize)
-    ax.set_title('Portfolio Efficient Frontier', fontsize=titlesize)
-    plt.grid(linestyle=glstyle, linewidth=glwidth)
-    plt.show()
-    
-    # -------------------------------------------------------------------
-    # --- portfolio structures
-    portfolio_pie_plot(rk.msr(periodized_ret, cov), tradepairs, name='MSR')
-    portfolio_pie_plot(rk.gmv(cov), tradepairs, name='GMV')
-
-def _value_to_2color(values):
-    return ['forestgreen' if v > 0 else 'crimson' for v in values]
-
-def _ticklabel_formatter(v, pos):
-    return round(v * 100, 2)
-
+# -------------------------------------------------------------------
+# --- plot pie
 def _filter_elements(values, labels):
     ret_v = []
     ret_l = []
@@ -144,6 +162,7 @@ def _filter_elements(values, labels):
             ret_v.append(0)
             ret_l.append('')
     return (nonzero_count, ret_v, ret_l)
+
 
 def _plot_pie(values, labels, name, figsize=(5, 5)):
     nzc, v, l = _filter_elements(values, labels)
