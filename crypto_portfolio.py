@@ -20,8 +20,8 @@ def historical_tradedata_pd(tradepairs, from_datetime, interval='1h', columns='C
     
 def historical_tradedata_analysis(tradepairs, from_datetime, interval='1h',
                                   period_info={'name': 'Daily', 'intervals': 24},
-                                  plotlist=['corr_map', 'price', 'ret', 'vol',
-                                            'sr', 'peak', 'wealth', 'drawdown',
+                                  plotlist=['corr_map', 'cov_map', 'price', 'ret',
+                                            'vol', 'sr', 'peak', 'wealth', 'drawdown',
                                             'ef', 'msr_struct', 'gmv_struct']):
     # --- data frame
     tradedata_pd = historical_tradedata_pd(tradepairs, from_datetime, interval)
@@ -48,7 +48,10 @@ def historical_tradedata_analysis(tradepairs, from_datetime, interval='1h',
     # - iterate and plot
     for p in plotlist:
         if p == 'corr_map':
-            plot_correlation_map(corr=corr, labels=tradepairs, titlesize=titlesize)
+            plot_heat_map(data=corr, labels=tradepairs, title='Correlations', titlesize=titlesize)
+
+        if p == 'cov_map':
+            plot_heat_map(data=cov, labels=tradepairs, title='Covariance', titlesize=titlesize)
 
         elif p == 'price':
             plot_price(tradedata_pd, tradepairs, 'USDT', figsize, glstyle, glwidth, titlesize)
@@ -113,14 +116,14 @@ def _ticklabel_formatter(v, pos):
 
 # -------------------------------------------------------------------
 # --- correlation map
-def plot_correlation_map(corr, labels, titlesize):
+def plot_heat_map(data, labels, title, titlesize):
     cellsize = 1.1*len(labels)
     heatmap_figsize = (cellsize+1, cellsize)
     plt.subplots(figsize=heatmap_figsize)
-    ax = sns.heatmap(corr, cmap='Blues', annot=True)
+    ax = sns.heatmap(data, cmap='Blues', annot=True)
     ax.xaxis.tick_top()
     plt.yticks(rotation=0)
-    plt.title('Correlations', fontsize=titlesize)
+    plt.title(title, fontsize=titlesize)
     plt.show()
 
 # -------------------------------------------------------------------
